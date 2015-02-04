@@ -19,6 +19,7 @@ data Config = Config
   , configWelcome :: String -- ^ A welcome string.
   , configHistory :: FilePath
   , configPrompt  :: String -> FilePath -> Hell String -- ^ An action to generate the prompt.
+  , configCabal   :: Maybe FilePath
   }
 
 -- | State of the shell.
@@ -55,7 +56,9 @@ instance Default Config where
            ,configPrompt =
               \username pwd ->
                 return (username ++ ":" ++ pwd ++ "$ ")
-           ,configHistory = "~/.hell-history"}
+           ,configHistory = "~/.hell-history"
+           ,configCabal = Nothing
+           }
 
 -- | Hopefully this shouldn't be a problem because while this is a
 -- library it has a very narrow use-case.

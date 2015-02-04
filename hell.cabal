@@ -27,6 +27,7 @@ library
                      filepath,
                      mtl,
                      unix,
+                     cabal-cargs >= 0.7,
                      shell-conduit >= 4.1,
                      conduit >= 1.1.2.1,
                      conduit-extra >= 1.1.0.3

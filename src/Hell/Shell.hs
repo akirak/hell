@@ -15,6 +15,10 @@ module Hell.Shell
 
 import           Hell.Types
 
+import qualified CabalCargs.Args as C hiding (format)
+import qualified CabalCargs.CompilerArgs as C
+import qualified CabalCargs.Format as C
+import qualified CabalCargs.Formatting as C
 import           Control.Applicative
 import           Control.Exception
 import           Control.Monad.Reader
@@ -28,6 +32,7 @@ import           Data.Monoid
 import qualified Data.Text as T
 import           DynFlags
 import           Exception (ExceptionMonad)
+import           Finder (findHomeModule, FindResult(Found))
 import           GHC hiding (History)
 import           GHC.Paths hiding (ghc)
 import           Name
@@ -35,6 +40,7 @@ import           Outputable (Outputable(..),showSDoc)
 import           System.Console.Haskeline
 import           System.Console.Haskeline.History
 import           System.Directory
+import           System.Environment (withArgs)
 import           System.FilePath
 import           System.Posix.User
 
@@ -43,13 +49,22 @@ startHell :: Config -> IO ()
 startHell unreadyConfig =
   do home <- io getHomeDirectory
      let config =
-           unreadyConfig { configHistory = reifyHome home (configHistory unreadyConfig) }
+           unreadyConfig { configHistory = reifyHome home (configHistory unreadyConfig)
+                         , configCabal = fmap (reifyHome home) (configCabal unreadyConfig)
+                         }
      runGhc
        (Just libdir)
        (do dflags <- getSessionDynFlags
-           void (setSessionDynFlags
-                   (setFlags [Opt_ImplicitPrelude]
-                             dflags))
+           void . setSessionDynFlags
+             =<< maybe return applyFlagsFromCabal (configCabal config)
+                 (setFlags [Opt_ImplicitPrelude]
+#if __GLASGOW_HASKELL__ >= 708
+                 .setOptions [Opt_BuildDynamicToo]
+#endif
+                 $ dflags)
+           hscEnv <- getSession
+           forM_ (configImports config) $ addTargetForImport hscEnv
+           _ <- load LoadAllTargets
            setImports (configImports config)
            historyRef <- io (readHistory (configHistory config) >>= newIORef)
            username <- io getEffectiveUserName
@@ -57,6 +72,49 @@ startHell unreadyConfig =
                               getNamesInScope
            runReaderT (runHell repl)
                       (HellState config historyRef username home candidates))
+
+setOptions :: [GeneralFlag] -> DynFlags -> DynFlags
+setOptions xs dflags = foldl gopt_set dflags xs
+
+applyFlagsFromCabal :: MonadIO m => FilePath -> DynFlags -> m DynFlags
+applyFlagsFromCabal cabalFile dflags = do
+    cargs <- io $ getCompilerArgsFromCabal cabalFile
+    let ghcArgs = C.format C.Ghc cargs
+    (dflags',_,_) <- parseDynamicFlagsCmdLine dflags (map noLoc ghcArgs)
+    return $ maybe id prependPkgConfFile (C.packageDB cargs) dflags'
+
+getCompilerArgsFromCabal :: FilePath -> IO C.CompilerArgs
+getCompilerArgsFromCabal cabalFile =
+    withArgs [] C.get
+    >>= \args -> C.fromCmdArgs (args { C.cabalFile = Just cabalFile })
+    >>= either (fail . show) setSourceDirs
+  where
+    setSourceDirs cargs = do
+        sourceDirs <-
+          case C.hsSourceDirs cargs of
+              [] -> return [takeDirectory cabalFile]
+              paths -> mapM canonicalizePath paths
+        return $ cargs { C.hsSourceDirs = sourceDirs }
+
+prependPkgConfFile :: FilePath -> DynFlags -> DynFlags
+prependPkgConfFile fp dflags =
+    dflags { extraPkgConfs = (PkgConfFile fp:) . extraPkgConfs dflags }
+
+addTargetForImport :: GhcMonad m => HscEnv -> String -> m ()
+addTargetForImport hscEnv stmt = do
+    importDecl <- parseImportDecl stmt
+    io (findModuleFile hscEnv $ unLoc $ ideclName importDecl)
+      >>= maybe (return ()) addTargetFile
+
+findModuleFile :: HscEnv -> ModuleName -> IO (Maybe FilePath)
+findModuleFile hscEnv mod =
+  do result <- findHomeModule hscEnv mod
+     case result of
+       Found loc _ -> return $ Just $ fromMaybe (ml_hi_file loc) $ ml_hs_file loc
+       _ -> return Nothing
+
+addTargetFile :: GhcMonad m => FilePath ->  m ()
+addTargetFile fp = addTarget $ Target (TargetFile fp Nothing) True Nothing
 
 -- | Read-eval-print loop.
 repl :: Hell ()
