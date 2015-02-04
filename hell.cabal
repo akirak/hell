@@ -11,6 +11,10 @@ category:            Shell
 build-type:          Simple
 cabal-version:       >=1.8
 
+flag defdeps
+  description: Install dependencies for the default configuration
+  default: True
+
 library
   exposed-modules:   Hell.Shell, Hell.Types, Hell
   hs-source-dirs:    src/
@@ -27,8 +31,9 @@ library
                      filepath,
                      mtl,
                      unix,
-                     cabal-cargs >= 0.7,
-                     shell-conduit >= 4.1,
+                     cabal-cargs >= 0.7
+  if flag(defdeps)
+    build-depends:   shell-conduit >= 4.1,
                      conduit >= 1.1.2.1,
                      conduit-extra >= 1.1.0.3
 
