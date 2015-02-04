@@ -14,11 +14,7 @@ cabal-version:       >=1.8
 library
   exposed-modules:   Hell.Shell, Hell.Types, Hell
   hs-source-dirs:    src/
-  build-depends:     split >= 0.2.2,
-                     template-haskell,
-                     resourcet >= 1.1.2.2,
-                     process-extras >= 0.2.0,
-                     transformers >= 0.3.0.0,
+  build-depends:     transformers >= 0.3.0.0,
                      base > 4 && <5,
                      process,
                      bytestring,
@@ -27,12 +23,10 @@ library
                      ghc-paths,
                      directory,
                      data-default,
-                     pdfinfo,
                      text,
                      filepath,
                      mtl,
                      unix,
-                     monad-extras,
                      shell-conduit >= 4.1,
                      conduit >= 1.1.2.1,
                      conduit-extra >= 1.1.0.3
